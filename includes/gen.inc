@@ -16,3 +16,39 @@ function load_includes() {
 function conf_init() {
 
 }
+
+function introspect_spl_class($item) {
+  $ignore_methods = array(
+    'getLinkTarget',
+    // 'getChildren',
+    'hasMethod',
+    'getMethod',
+    'hasProperty',
+    'getProperty',
+    'export',
+    'isInstance',
+    'hasConstant',
+    'getConstant',
+    'newInstance',
+    'newInstanceArgs',
+    'isSubclassOf',
+    'implementsInterface',
+    'setStaticPropertyValue',
+    'getStaticPropertyValue',
+    'findRoot',
+  );
+
+  $rsr = array();
+  foreach (get_class_methods($item) as $method) {
+    if (in_array($method, $ignore_methods) || is_int(strpos($method, '__'))) {
+      continue;
+    }
+    $rsr['methods'][$method] = $item->$method();
+  }
+  if ($item instanceof Iterator) {
+    foreach ($item as $it_item) {
+      $rsr['tostring'][] = $it_item->__toString();
+    }
+  }
+  return $rsr;
+}
