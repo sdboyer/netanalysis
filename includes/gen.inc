@@ -1,6 +1,6 @@
 <?php
 
-define('INCLUDE_DIR', realpath(__FILE__));
+define('INCLUDE_DIR', dirname(realpath(__FILE__)));
 
 function load_includes() {
   foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(INCLUDE_DIR)) as $item) {
