@@ -2,6 +2,14 @@
 
 define('INCLUDE_DIR', dirname(realpath(__FILE__)));
 
+// Load some includes that really have to be loaded first
+require_once INCLUDE_DIR . '/database/query.inc';
+require_once INCLUDE_DIR . '/database/database.inc';
+
+
+
+
+
 function load_includes() {
   foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(INCLUDE_DIR)) as $item) {
     if ((string) $item->getPathname() == __FILE__) {
@@ -14,41 +22,78 @@ function load_includes() {
 }
 
 function conf_init() {
+  global $db_prefix, $db_type, $databases;
+  $databases = array(
+    'default' => array(
+      'default' => array(
+        'driver'    => 'mysql',
+        'database'  => 'netanalysis',
+        'username'  => 'dev',
+        'password'  => 'dev',
+        'host'      =>  'localhost',
+        'port'      =>  '',
+      ),
+    ),
+  );
 
+  $db_prefix = '';
 }
 
-function introspect_spl_class($item) {
+function introspect_spl_class($item, $doitanyway = FALSE) {
   $ignore_methods = array(
     'getLinkTarget',
     // 'getChildren',
-    'hasMethod',
-    'getMethod',
-    'hasProperty',
-    'getProperty',
-    'export',
-    'isInstance',
-    'hasConstant',
-    'getConstant',
-    'newInstance',
-    'newInstanceArgs',
-    'isSubclassOf',
-    'implementsInterface',
-    'setStaticPropertyValue',
-    'getStaticPropertyValue',
+    //'hasMethod',
+    //'getMethod',
+    //'hasProperty',
+    //'getProperty',
+    //'export',
+    //'isInstance',
+    //'hasConstant',
+    //'getConstant',
+    //'newInstance',
+    //'newInstanceArgs',
+    //'isSubclassOf',
+    //'implementsInterface',
+    //'setStaticPropertyValue',
+    //'getStaticPropertyValue',
     'findRoot',
+    'setCsvControl',
+    'getCsvControl',
+    'fgetcsv',
+    'fgets',
+    'flock',
+    'fflush',
+    'ftruncate',
+    'fstat',
+    'fwrite',
+    'fscanf',
+    'fgetss',
+    'fpassthru',
+    'fgetc',
+    'fseek',
+    'ftell',
+    'seek',
+    'setMaxLineLen',
+    'setFlags',
+    'eof',
   );
+  $ignore_methods = array_merge($ignore_methods, get_class_methods('RecursiveIteratorIterator'));
+  $ignore_methods = array_merge($ignore_methods, get_class_methods('ReflectionClass'));
 
   $rsr = array();
   foreach (get_class_methods($item) as $method) {
-    if (in_array($method, $ignore_methods) || is_int(strpos($method, '__'))) {
-      continue;
+    if (!in_array($method, $ignore_methods) && strpos($method, '__') === FALSE) {
+      $rsr['method_output'][$method] = $item->$method();
     }
-    $rsr['methods'][$method] = $item->$method();
+    $rsr['methods'][] = $method;
   }
-  if ($item instanceof Iterator) {
-    foreach ($item as $it_item) {
-      $rsr['tostring'][] = $it_item->__toString();
+/*  if ($item instanceof Iterator) {
+    if ($item instanceof SplFileObject ? $doitanyway : TRUE) {
+      foreach ($item as $it_item) {
+        $rsr['tostring'][] = $it_item instanceof Iterator ? $it_item->__toString() : $it_item;
+      }
     }
-  }
+  }*/
   return $rsr;
 }
