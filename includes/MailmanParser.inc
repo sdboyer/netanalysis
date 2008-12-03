@@ -18,10 +18,8 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     if (!$this->cur) {
       $this->cur = array();
       $this->parseMailItem();
-      $this->extractData();
     }
-    return $this->mailBody;
-    // return $this->cur;
+    return $this->cur;
   }
 
   public function key() {
@@ -48,7 +46,7 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     $this->mailHeader = trim($this->getStream("\n\n"));
     $regex = array(
       "/^From\ .*\n/" => "", // Kill the whole first line, we don't need it
-      "/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \(([\w\pP-]*)\)/m" => "$1@$2 $3",
+      "/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \((.*?)\)/m" => "$1@$2 $3",
       "/>[\n|\t|\ ]{1,3}</m" => "><",
       // These three filter out useless crud from the ref metadata
       "/&host=@drupal\.org/m" => "",
@@ -59,63 +57,48 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     // preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
     $header = explode("\n", $header);
     sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
-    $this->cur['date'] = substr(array_shift($header), 6);
-    $this->cur['subject'] = substr(array_shift($header), 8);
-    $refs = array();
     foreach ($header as $grouping) {
-      $group_name = strtolower(substr($grouping, 0, strpos($grouping, ': ')));
-      $grouping = explode('><', trim(strstr($grouping, '<'), '<>'));
+      $group_name = strtolower(str_replace('-', '_', substr($grouping, 0, strpos($grouping, ': '))));
 
+      if ($group_name != 'references') {
+        $this->cur[$group_name] = trim(strstr($grouping, ':'), ': <>');
+        continue;
+      }
+
+      // Message references take more handling
       $nids = array();
-      foreach ($grouping as $key => $pairs) {
-        $refs[$group_name] = array();
-        preg_match_all('/(?:[&]?)([\w]*)=([\w]*)/', $pairs, $refs[$group_name][$key]);
-        $this->cur[$group_name][$key] = array_combine($refs[$group_name][$key][1], $refs[$group_name][$key][2]);
+      $references = explode('><', trim(strstr($grouping, '<'), '<>'));
+      foreach ($references as $key => $ref) {
+        $refs = array();
+        if (!strpos($ref, '=')) {
+          $this->cur['references'][$key] = $ref;
+          continue;
+        }
+        preg_match_all('/(?:[&]?)([\w]*)=([\w]{1,12})/', $ref, $refs[$key]);
+        $this->cur['references'][$key] = array_combine($refs[$key][1], $refs[$key][2]);
         // Handle this silly repeated nid data case crap
-        if (!empty($this->cur[$group_name][$key]['nid'])) {
-          $nid = $this->cur[$group_name][$key]['nid'];
-          if (!isset($nids[$this->cur[$group_name][$key]['nid']])) {
+        if (!empty($this->cur['references'][$key]['nid'])) {
+          $nid = $this->cur['references'][$key]['nid'];
+          if (!isset($nids[$this->cur['references'][$key]['nid']])) {
             $nids[$nid] = $key;
           }
           else {
-            $this->cur[$group_name][$nids[$nid]] = array_merge($this->cur[$group_name][$nids[$nid]], $this->cur[$group_name][$key]);
-            unset($this->cur[$group_name][$key]);
+            $this->cur['references'][$nids[$nid]] = array_merge($this->cur['references'][$nids[$nid]], $this->cur['references'][$key]);
+            unset($this->cur['references'][$key]);
           }
         }
       }
-
-        // preg_match_all('/(?:<)(?:[&]?([\w]*)=([\w]*))*(?:>)/', $grouping, $refs);
-      // $this->cur[$group_name] = $$group_name;
-      $i = 'break on me';
     }
 
-    // $this->numHumanResponses = preg_match_all("/(?<=\n(?In-Reply-To|References|Message-ID): )<.*>/m", $header, $refs);
-    // preg_match_all("/[&|<]([\w]*)=([\w]*)[&|>]");
-
-    // $header = preg_replace("/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \(([\w\pP-]*)\)/m", "$1@$2 $3", $this->mailHeader);
-    // $header = preg_replace("/From\:\ ([0-9A-Za-z_-]*)\ at\ ([\pN\pL\pP]*)\/m", "$1@$2", $this->mailHeader);
-    // $this->mailHeader
-
-    for ($this->buffer .= $this->getStream();
-         $pointer_loc = $this->ftell(), !preg_match('/^From [0-9A-Za-z_-]*\ at.*200{5|6|7|8}$/x', fgets($this->fp));
-         $this->buffer .= $this->getStream()) {
+    for ($this->buffer .= $this->getStream("\n\nFrom");
+         $pointer_loc = $this->ftell(), $str = fgets($this->fp), !preg_match('/^(?:From\ )?[0-9A-Za-z_-]*\ at.*200[5|6|7|8]$/', $str);
+         $this->buffer .= $this->getStream("\n\nFrom ")) {
 
       fseek($this->fp, $pointer_loc);
     }
     $this->mailBody = trim($this->buffer);
   }
 
-/*  protected function extractData() {
-    $text =<<<EOF
-%s %s
-Date: %s
-Subject: %s
-In-Reply-To:
-EOF;
-    sscanf($this->mailHeader, $text,
-
-  }
-*/
   protected function freeCurrent() {
     $this->cur = $this->mailBody = $this->mailHeader = NULL;
   }
