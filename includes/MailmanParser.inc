@@ -54,20 +54,39 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
       "/&host=@drupal\.org/m" => "",
       "/type=project&/m" => "",
       "/[&]?revcount=1[&]?/m" => "",
-
     );
     $header = preg_replace(array_keys($regex), array_values($regex), $this->mailHeader);
-    preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
+    // preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
     $header = explode("\n", $header);
     sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
+    $this->cur['date'] = substr(array_shift($header), 6);
+    $this->cur['subject'] = substr(array_shift($header), 8);
+    $refs = array();
     foreach ($header as $grouping) {
-      $group_name = substr($grouping, 0, strpos($grouping, ': '));
-      $grouping = strstr($grouping, '<');
-      $grouping = trim(str_replace('><', '|', $grouping), '<>');
-      //foreach (new RecursiveIteratorIterator(new RecursiveArrayIterator()))
+      $group_name = strtolower(substr($grouping, 0, strpos($grouping, ': ')));
+      $grouping = explode('><', trim(strstr($grouping, '<'), '<>'));
 
-      $this->cur[strtolower($group_name)] = $refs;
-      //
+      $nids = array();
+      foreach ($grouping as $key => $pairs) {
+        $refs[$group_name] = array();
+        preg_match_all('/(?:[&]?)([\w]*)=([\w]*)/', $pairs, $refs[$group_name][$key]);
+        $this->cur[$group_name][$key] = array_combine($refs[$group_name][$key][1], $refs[$group_name][$key][2]);
+        // Handle this silly repeated nid data case crap
+        if (!empty($this->cur[$group_name][$key]['nid'])) {
+          $nid = $this->cur[$group_name][$key]['nid'];
+          if (!isset($nids[$this->cur[$group_name][$key]['nid']])) {
+            $nids[$nid] = $key;
+          }
+          else {
+            $this->cur[$group_name][$nids[$nid]] = array_merge($this->cur[$group_name][$nids[$nid]], $this->cur[$group_name][$key]);
+            unset($this->cur[$group_name][$key]);
+          }
+        }
+      }
+
+        // preg_match_all('/(?:<)(?:[&]?([\w]*)=([\w]*))*(?:>)/', $grouping, $refs);
+      // $this->cur[$group_name] = $$group_name;
+      $i = 'break on me';
     }
 
     // $this->numHumanResponses = preg_match_all("/(?<=\n(?In-Reply-To|References|Message-ID): )<.*>/m", $header, $refs);
