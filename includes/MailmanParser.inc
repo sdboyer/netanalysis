@@ -1,7 +1,115 @@
 <?php
 
-class MailmanArchiveParser extends SplFileObject {
+/**
+ *
+ * @author sdboyer
+ *
+ */
+class MailmanArchiveParser extends SplFileInfo implements Iterator {
+// class MailmanArchiveParser extends SplFileObject {
+  protected $cur, $fp, $mailBody, $mailHeader, $buffer, $year, $month;
+
   public function __construct($path) {
     parent::__construct($path);
+    $this->fp = fopen($this, 'r');
+  }
+
+  public function current() {
+    if (!$this->cur) {
+      $this->cur = array();
+      $this->parseMailItem();
+      $this->extractData();
+    }
+    return $this->mailBody;
+    // return $this->cur;
+  }
+
+  public function key() {
+    return sha1($this->mailHeader);
+  }
+
+  public function next() {
+    $this->freeCurrent();
+  }
+
+/*  public function fgets() {
+    $this->buffer = fgets($this->fp);
+  }*/
+
+  public function ftell() {
+    return ftell($this->fp);
+  }
+
+  protected function getStream($ending) {
+    return stream_get_line($this->fp, 0, $ending);
+  }
+
+  protected function parseMailItem() {
+    $this->mailHeader = trim($this->getStream("\n\n"));
+    $regex = array(
+      "/^From\ .*\n/" => "", // Kill the whole first line, we don't need it
+      "/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \(([\w\pP-]*)\)/m" => "$1@$2 $3",
+      "/>[\n|\t|\ ]{1,3}</m" => "><",
+      // These three filter out useless crud from the ref metadata
+      "/&host=@drupal\.org/m" => "",
+      "/type=project&/m" => "",
+      "/[&]?revcount=1[&]?/m" => "",
+
+    );
+    $header = preg_replace(array_keys($regex), array_values($regex), $this->mailHeader);
+    preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
+    $header = explode("\n", $header);
+    sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
+    foreach ($header as $grouping) {
+      $group_name = substr($grouping, 0, strpos($grouping, ': '));
+      $grouping = strstr($grouping, '<');
+      $grouping = trim(str_replace('><', '|', $grouping), '<>');
+      //foreach (new RecursiveIteratorIterator(new RecursiveArrayIterator()))
+
+      $this->cur[strtolower($group_name)] = $refs;
+      //
+    }
+
+    // $this->numHumanResponses = preg_match_all("/(?<=\n(?In-Reply-To|References|Message-ID): )<.*>/m", $header, $refs);
+    // preg_match_all("/[&|<]([\w]*)=([\w]*)[&|>]");
+
+    // $header = preg_replace("/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \(([\w\pP-]*)\)/m", "$1@$2 $3", $this->mailHeader);
+    // $header = preg_replace("/From\:\ ([0-9A-Za-z_-]*)\ at\ ([\pN\pL\pP]*)\/m", "$1@$2", $this->mailHeader);
+    // $this->mailHeader
+
+    for ($this->buffer .= $this->getStream();
+         $pointer_loc = $this->ftell(), !preg_match('/^From [0-9A-Za-z_-]*\ at.*200{5|6|7|8}$/x', fgets($this->fp));
+         $this->buffer .= $this->getStream()) {
+
+      fseek($this->fp, $pointer_loc);
+    }
+    $this->mailBody = trim($this->buffer);
+  }
+
+/*  protected function extractData() {
+    $text =<<<EOF
+%s %s
+Date: %s
+Subject: %s
+In-Reply-To:
+EOF;
+    sscanf($this->mailHeader, $text,
+
+  }
+*/
+  protected function freeCurrent() {
+    $this->cur = $this->mailBody = $this->mailHeader = NULL;
+  }
+
+  public function rewind() {
+    fseek($this->fp, 0);
+  }
+
+  public function valid() {
+    return !feof($this->fp);
+  }
+
+  public function __destruct() {
+    fclose($this->fp);
   }
 }
