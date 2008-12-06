@@ -8,6 +8,7 @@
 class MailmanArchiveParser extends SplFileInfo implements Iterator {
 // class MailmanArchiveParser extends SplFileObject {
   protected $cur, $fp, $mailBody, $mailHeader, $buffer;
+  protected $eof = FALSE;
 
   public function __construct($path) {
     parent::__construct($path);
@@ -78,56 +79,63 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     // sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
     foreach ($header as $grouping) {
       $group_name = strtolower(str_replace('-', '_', substr($grouping, 0, strpos($grouping, ': '))));
-
-      if ($group_name != 'references') {
-        $this->cur[$group_name] = trim(strstr($grouping, ':'), ': <>');
-        continue;
+      if (method_exists($this, 'parseGroup' . $group_name)) {
+        $method = 'parseGroup' . $group_name;
+        $this->$method($grouping);
       }
-
-      // Message references take more handling
-      $nids = array();
-      $references = explode('><', trim(strstr($grouping, '<'), '<>'));
-      foreach ($references as $key => $ref) {
-        $refs = array();
-        if (!strpos($ref, '=')) {
-          $this->cur['references'][$key] = $ref;
-          continue;
-        }
-        preg_match_all('/(?:[&]?)([\w]*)=([\w]{1,12})/', $ref, $refs[$key]);
-        $this->cur['references'][$key] = array_combine($refs[$key][1], $refs[$key][2]);
-        // Handle this silly repeated nid data case crap
-        if (!empty($this->cur['references'][$key]['nid'])) {
-          $nid = $this->cur['references'][$key]['nid'];
-          if (!isset($nids[$this->cur['references'][$key]['nid']])) {
-            $nids[$nid] = $key;
-          }
-          else {
-            $this->cur['references'][$nids[$nid]] = array_merge($this->cur['references'][$nids[$nid]], $this->cur['references'][$key]);
-            unset($this->cur['references'][$key]);
-          }
-        }
+      else {
+        $this->cur[$group_name] = trim(strstr($grouping, ':'), ': <>');
       }
     }
 
     $pointer = $this->ftell();
     do  {
+      // Fetch the next big block of text.
       $this->buffer .= $this->getStream("\n\nFrom");
       $pointer_loc = $this->ftell();
+      // Store the (rest of the) current line's contents for later checking.
       $str = fgets($this->fp);
+      // Reset the pointer to where it was before getting the line.
       fseek($this->fp, $pointer_loc);
-    } while (!preg_match('/^(?:From)?(?: )?[\w\pP-]*\ at.*200[5|6|7|8]$/', $str));
+    } while (is_string($str) && !preg_match('/^(?:From)?(?: )?[\w\pP-]*\ at.*200[5|6|7|8]$/', $str));
+
+    if ($str === FALSE) {
+      $this->eof = TRUE;
+    }
     // Fracking stream_get_line() bugs.
-    if (strpos($str, 'From') !== 0) {
+    elseif (strpos($str, 'From') !== 0) {
       fseek($this->fp, $this->ftell() - 4);
     }
-
-/*    for ($this->buffer = $this->getStream("\n\nFrom"), $pointer_loc = $this->ftell(), $str = fgets($this->fp);
-         !preg_match('/^(?:From\ )?[\w\pP-]*\ at.*200[5|6|7|8]$/', $str);
-         $this->buffer .= $this->getStream("\n\nFrom")) {
-
-      fseek($this->fp, $pointer_loc);
-    }*/
     $this->mailBody = trim($this->buffer);
+  }
+
+  protected function parseGroupReferences($grouping) {
+    $nids = array();
+    $references = explode('><', trim(strstr($grouping, '<'), '<>'));
+    foreach ($references as $key => $ref) {
+      $refs = array();
+      if (!strpos($ref, '=')) {
+        $this->cur['references'][$key] = $ref;
+        continue;
+      }
+      preg_match_all('/(?:[&]?)([\w]*)=([\w]{1,12})/', $ref, $refs[$key]);
+      $this->cur['references'][$key] = array_combine($refs[$key][1], $refs[$key][2]);
+      // Handle this silly repeated nid data case crap
+      if (!empty($this->cur['references'][$key]['nid'])) {
+        $nid = $this->cur['references'][$key]['nid'];
+        if (!isset($nids[$this->cur['references'][$key]['nid']])) {
+          $nids[$nid] = $key;
+        }
+        else {
+          $this->cur['references'][$nids[$nid]] = array_merge($this->cur['references'][$nids[$nid]], $this->cur['references'][$key]);
+          unset($this->cur['references'][$key]);
+        }
+      }
+    }
+  }
+
+  protected function parseGroupDate($grouping) {
+    $this->cur['timestamp'] = strtotime(trim(strstr($grouping, ':'), ': <>'));
   }
 
   protected function freeCurrent() {
@@ -139,7 +147,7 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
   }
 
   public function valid() {
-    return !feof($this->fp);
+    return !$this->eof;
   }
 
   public function __destruct() {
