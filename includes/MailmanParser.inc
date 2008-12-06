@@ -5,9 +5,9 @@
  * @author sdboyer
  *
  */
-class MailmanArchiveParser extends SplFileInfo implements Iterator {
+class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData {
 // class MailmanArchiveParser extends SplFileObject {
-  protected $cur, $fp, $mailBody, $mailHeader, $buffer;
+  protected $metadata, $fp, $mailBody, $mailHeader, $buffer;
   protected $eof = FALSE;
 
   public function __construct($path) {
@@ -16,15 +16,19 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
   }
 
   public function current() {
-    if (!$this->cur) {
-      $this->cur = array();
+    if (!$this->metadata) {
+      $this->metadata = array();
       $this->parseMailItem();
     }
     return $this;
   }
 
   public function getNetworkData() {
-    return $this->cur;
+    return $this->metadata;
+  }
+
+  public function getNameType() {
+
   }
 
   public function key() {
@@ -69,14 +73,14 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     // Timestamp for Tue Nov  8 21:28:00 2005, since that's roughly when the dates start working
     if ($stamp < 1131485280) {
       $header = preg_replace('/^timestamp.*\n/m', '', $header);
-      $this->cur['timestamp'] = $stamp;
+      $this->metadata['timestamp'] = $stamp;
     }
 
     // preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
     $header = explode("\n", $header);
-    $this->cur['mail'] = array_shift($header);
-    $this->cur['name'] = array_shift($header);
-    // sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
+    $this->metadata['mail'] = array_shift($header);
+    $this->metadata['name'] = array_shift($header);
+    // sscanf(array_shift($header), '%s %s', $this->metadata['mail'], $this->metadata['name']);
     foreach ($header as $grouping) {
       $group_name = strtolower(str_replace('-', '_', substr($grouping, 0, strpos($grouping, ': '))));
       if (method_exists($this, 'parseGroup' . $group_name)) {
@@ -84,7 +88,7 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
         $this->$method($grouping);
       }
       else {
-        $this->cur[$group_name] = trim(strstr($grouping, ':'), ': <>');
+        $this->metadata[$group_name] = trim(strstr($grouping, ':'), ': <>');
       }
     }
 
@@ -115,31 +119,31 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
     foreach ($references as $key => $ref) {
       $refs = array();
       if (!strpos($ref, '=')) {
-        $this->cur['references'][$key] = $ref;
+        $this->metadata['references'][$key] = $ref;
         continue;
       }
       preg_match_all('/(?:[&]?)([\w]*)=([\w]{1,12})/', $ref, $refs[$key]);
-      $this->cur['references'][$key] = array_combine($refs[$key][1], $refs[$key][2]);
+      $this->metadata['references'][$key] = array_combine($refs[$key][1], $refs[$key][2]);
       // Handle this silly repeated nid data case crap
-      if (!empty($this->cur['references'][$key]['nid'])) {
-        $nid = $this->cur['references'][$key]['nid'];
-        if (!isset($nids[$this->cur['references'][$key]['nid']])) {
+      if (!empty($this->metadata['references'][$key]['nid'])) {
+        $nid = $this->metadata['references'][$key]['nid'];
+        if (!isset($nids[$this->metadata['references'][$key]['nid']])) {
           $nids[$nid] = $key;
         }
         else {
-          $this->cur['references'][$nids[$nid]] = array_merge($this->cur['references'][$nids[$nid]], $this->cur['references'][$key]);
-          unset($this->cur['references'][$key]);
+          $this->metadata['references'][$nids[$nid]] = array_merge($this->metadata['references'][$nids[$nid]], $this->metadata['references'][$key]);
+          unset($this->metadata['references'][$key]);
         }
       }
     }
   }
 
   protected function parseGroupDate($grouping) {
-    $this->cur['timestamp'] = strtotime(trim(strstr($grouping, ':'), ': <>'));
+    $this->metadata['timestamp'] = strtotime(trim(strstr($grouping, ':'), ': <>'));
   }
 
   protected function freeCurrent() {
-    $this->cur = $this->buffer = $this->mailBody = $this->mailHeader = NULL;
+    $this->metadata = $this->buffer = $this->mailBody = $this->mailHeader = NULL;
   }
 
   public function rewind() {
