@@ -6,9 +6,10 @@ define('INCLUDE_DIR', dirname(realpath(__FILE__)));
 require_once INCLUDE_DIR . '/database/query.inc';
 require_once INCLUDE_DIR . '/database/database.inc';
 
-
-
-
+interface NetworkData {
+  public function getNetworkData();
+  public function getNameType();
+}
 
 function load_includes() {
   foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(INCLUDE_DIR)) as $item) {
