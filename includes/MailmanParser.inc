@@ -7,7 +7,7 @@
  */
 class MailmanArchiveParser extends SplFileInfo implements Iterator {
 // class MailmanArchiveParser extends SplFileObject {
-  protected $cur, $fp, $mailBody, $mailHeader, $buffer, $year, $month;
+  protected $cur, $fp, $mailBody, $mailHeader, $buffer;
 
   public function __construct($path) {
     parent::__construct($path);
@@ -19,6 +19,10 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
       $this->cur = array();
       $this->parseMailItem();
     }
+    return $this;
+  }
+
+  public function getNetworkData() {
     return $this->cur;
   }
 
@@ -45,18 +49,33 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
   protected function parseMailItem() {
     $this->mailHeader = trim($this->getStream("\n\n"));
     $regex = array(
-      "/^From\ .*\n/" => "", // Kill the whole first line, we don't need it
-      "/From\:\ ([\w\pP-]*)\ at\ ([\w\pP-]*)\ \((.*?)\)/m" => "$1@$2 $3",
-      "/>[\n|\t|\ ]{1,3}</m" => "><",
+      // "/^From\ [\w\pP-]*\ at\ [\w\pP-]*\ [ ]?(.*)$/x" => "$1",
+      "/^From.*\n/" => "", // Kill the whole first line, we don't need it
+      "/From\: ([\w\pP-]*) at ([\w\pP-]*) \((.*)\)/m" => "$1@$2\n$3",
+      "/^Date/m" => "timestamp",
+      "/>[\n|\t| ]{1,3}</m" => "><",
+      '/\n\t[ ]?/m' => ' ',
       // These three filter out useless crud from the ref metadata
       "/&host=@drupal\.org/m" => "",
       "/type=project&/m" => "",
       "/[&]?revcount=1[&]?/m" => "",
     );
+    // preg_match('/^(?:From)(?: )?(?: [\w\pP-]*\ at.*\ [\w\pP-]*).*$/', $this->mailHeader, $date);
+    preg_match('/^From [\w\pP-]* at [\w\pP-]*(.*)\n/', $this->mailHeader, $date);
     $header = preg_replace(array_keys($regex), array_values($regex), $this->mailHeader);
+
+    $stamp = strtotime(trim(($date[1])));
+    // Timestamp for Tue Nov  8 21:28:00 2005, since that's roughly when the dates start working
+    if ($stamp < 1131485280) {
+      $header = preg_replace('/^timestamp.*\n/m', '', $header);
+      $this->cur['timestamp'] = $stamp;
+    }
+
     // preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
     $header = explode("\n", $header);
-    sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
+    $this->cur['mail'] = array_shift($header);
+    $this->cur['name'] = array_shift($header);
+    // sscanf(array_shift($header), '%s %s', $this->cur['mail'], $this->cur['name']);
     foreach ($header as $grouping) {
       $group_name = strtolower(str_replace('-', '_', substr($grouping, 0, strpos($grouping, ': '))));
 
@@ -90,17 +109,29 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator {
       }
     }
 
-    for ($this->buffer .= $this->getStream("\n\nFrom");
-         $pointer_loc = $this->ftell(), $str = fgets($this->fp), !preg_match('/^(?:From\ )?[0-9A-Za-z_-]*\ at.*200[5|6|7|8]$/', $str);
-         $this->buffer .= $this->getStream("\n\nFrom ")) {
+    $pointer = $this->ftell();
+    do  {
+      $this->buffer .= $this->getStream("\n\nFrom");
+      $pointer_loc = $this->ftell();
+      $str = fgets($this->fp);
+      fseek($this->fp, $pointer_loc);
+    } while (!preg_match('/^(?:From)?(?: )?[\w\pP-]*\ at.*200[5|6|7|8]$/', $str));
+    // Fracking stream_get_line() bugs.
+    if (strpos($str, 'From') !== 0) {
+      fseek($this->fp, $this->ftell() - 4);
+    }
+
+/*    for ($this->buffer = $this->getStream("\n\nFrom"), $pointer_loc = $this->ftell(), $str = fgets($this->fp);
+         !preg_match('/^(?:From\ )?[\w\pP-]*\ at.*200[5|6|7|8]$/', $str);
+         $this->buffer .= $this->getStream("\n\nFrom")) {
 
       fseek($this->fp, $pointer_loc);
-    }
+    }*/
     $this->mailBody = trim($this->buffer);
   }
 
   protected function freeCurrent() {
-    $this->cur = $this->mailBody = $this->mailHeader = NULL;
+    $this->cur = $this->buffer = $this->mailBody = $this->mailHeader = NULL;
   }
 
   public function rewind() {
