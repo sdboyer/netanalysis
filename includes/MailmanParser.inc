@@ -9,6 +9,8 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
 // class MailmanArchiveParser extends SplFileObject {
   protected $metadata, $fp, $mailBody, $mailHeader, $buffer;
   protected $eof = FALSE;
+  protected $idsKnown = array();
+  protected $idsUnknown = array();
 
   public function __construct($path) {
     parent::__construct($path);
@@ -28,15 +30,29 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
   }
 
   public function getNameType() {
-
+    return strpos($this->metadata['message_id'], 'nid=') === FALSE ? 'do_name' : 'nick';
   }
 
-  public function key() {
+  public function getKnownIds() {
+    return $this->idsKnown;
+  }
+
+  public function getUnknownIds() {
+    return $this->idsUnknown;
+  }
+
+  public function getInrxnId() {
     return sha1($this->mailHeader);
   }
 
+  public function key() {
+    return $this->getInrxnId();
+  }
+
   public function next() {
-    $this->freeCurrent();
+    // Re-ininitialize all per-iteration data containers.
+    $this->metadata = $this->idsKnown = $this->idsUnknown = array();
+    $this->buffer = $this->mailBody = $this->mailHeader = NULL;
   }
 
 /*  public function fgets() {
@@ -78,8 +94,8 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
 
     // preg_match_all("/(?<=\n)[A-Za-z-]+(?=: )/m", $this->mailHeader, $keys);
     $header = explode("\n", $header);
-    $this->metadata['mail'] = array_shift($header);
-    $this->metadata['name'] = array_shift($header);
+    $this->idsKnown['mail'] = array_shift($header);
+    $this->idsUnknown['name'] = array_shift($header);
     // sscanf(array_shift($header), '%s %s', $this->metadata['mail'], $this->metadata['name']);
     foreach ($header as $grouping) {
       $group_name = strtolower(str_replace('-', '_', substr($grouping, 0, strpos($grouping, ': '))));
@@ -92,7 +108,6 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
       }
     }
 
-    $pointer = $this->ftell();
     do  {
       // Fetch the next big block of text.
       $this->buffer .= $this->getStream("\n\nFrom");
@@ -111,6 +126,14 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
       fseek($this->fp, $this->ftell() - 4);
     }
     $this->mailBody = trim($this->buffer);
+
+    // Handle automated drupal-devel emails with id info.
+    $at_do = strpos($this->idsKnown['mail'], '@drupal.org');
+    if ($at_do !== FALSE) {
+      // $this->idsKnown['do_name'] = substr($this->idsKnown['mail'], 0, $at_do);
+      $this->idsKnown['do_name'] = $this->idsUnknown['name'];
+      unset($this->idsKnown['mail'], $this->idsUnknown['name']);
+    }
   }
 
   protected function parseGroupReferences($grouping) {
@@ -140,10 +163,6 @@ class MailmanArchiveParser extends SplFileInfo implements Iterator, NetworkData 
 
   protected function parseGroupDate($grouping) {
     $this->metadata['timestamp'] = strtotime(trim(strstr($grouping, ':'), ': <>'));
-  }
-
-  protected function freeCurrent() {
-    $this->metadata = $this->buffer = $this->mailBody = $this->mailHeader = NULL;
   }
 
   public function rewind() {
