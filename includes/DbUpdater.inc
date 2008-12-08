@@ -22,7 +22,8 @@ class DbUpdater {
     $this->fields = $data->getNetworkData();
     $this->inrxnId = $data->getInrxnId();
     $this->update = (bool) db_select('inrxn')
-      ->condition('inrxnid', $data->getInrxnId())
+      ->fields('inrxnid')
+      ->condition('inrxnid', $this->inrxnId)
       ->execute()->columnCount();
   }
 
