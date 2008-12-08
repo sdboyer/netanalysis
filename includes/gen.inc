@@ -8,7 +8,9 @@ require_once INCLUDE_DIR . '/database/database.inc';
 
 interface NetworkData {
   public function getNetworkData();
-  public function getNameType();
+  public function getKnownIds();
+  public function getUnknownIds();
+  public function getInrxnId();
 }
 
 function load_includes() {
@@ -143,4 +145,8 @@ function drupal_validate_utf8($text) {
   // containing invalid UTF-8 byte sequences. It does not reject character
   // codes above U+10FFFF (represented by 4 or more octets), though.
   return (preg_match('/^./us', $text) == 1);
+}
+
+function drupal_alter() {
+
 }
