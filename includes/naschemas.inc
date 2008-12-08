@@ -131,11 +131,19 @@ function get_all_schemas() {
         'type' => 'varchar',
         'length' => 32,
         'not null' => TRUE,
-        'description' => 'A SHA1 hash value of some unique identifying feature, and reproducible, feature of the interaction.'
+        'description' => 'A SHA1 hash value of some unique and reproducible identifying feature of the interaction.'
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp of the exact date and time at which this interaction occurred.'
       ),
     ),
     'indexes' => array(
       'setid_join' => array('inrxnid', 'setid'),
+      'time' => array('timestamp'),
     ),
     'unique keys' => array(
       'inrxnid' => array('inrxnid'),
