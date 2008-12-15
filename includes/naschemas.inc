@@ -34,21 +34,21 @@ function get_all_schemas() {
         'type' => 'varchar',
         'length' => 60,
         'not null' => FALSE,
-        'default' => NULL,
+        'default' => '',
         'description' => "Person's drupal.org username.",
       ),
       'real_name' => array(
         'type' => 'varchar',
         'length' => 100,
         'not null' => FALSE,
-        'default' => NULL,
+        'default' => '',
         'description' => "Person's real, full name.",
       ),
       'cvs_name' => array(
         'type' => 'varchar',
         'length' => 32,
         'not null' => FALSE,
-        'default' => NULL,
+        'default' => '',
         'description' => "Person's cvs account name.",
       ),
     ),
@@ -69,7 +69,6 @@ function get_all_schemas() {
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
-        'description' => 'Primary Key: unique person id.',
       ),
       'mail' => array(
         'type' => 'varchar',
@@ -94,7 +93,6 @@ function get_all_schemas() {
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
-        'description' => 'Primary Key: unique person id.',
       ),
       'nick' => array(
         'type' => 'varchar',
@@ -124,7 +122,6 @@ function get_all_schemas() {
       'setid' => array(
         'type' => 'int',
         'unsigned' => TRUE,
-        'not null' => TRUE,
         'description' => 'Unique setting id for this interaction.',
       ),
       'inrxnid' => array(
@@ -148,9 +145,74 @@ function get_all_schemas() {
     'unique keys' => array(
       'inrxnid' => array('inrxnid'),
     ),
-    'primary key' => 'iid',
+    'primary key' => array('iid'),
     'module' => 'blah',
     'name' => 'inrxn',
+  );
+
+  $schema['inrxn_devlist'] = array(
+    'description' => 'Table with listing of all interaction from the drupal-devel list.',
+    'fields' => array(
+      'inrxnid' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'description' => 'A SHA1 hash value of some unique and reproducible identifying feature of the interaction.'
+      ),
+      'message_id' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'in_reply_to' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => FALSE,
+        'default' => '',
+      ),
+      'subject' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'default' => '',
+      ),
+      'body' => array(
+        'type' => 'text',
+        'length' => 'long',
+        'not null' => FALSE,
+      ),
+    ),
+    'indexes' => array(
+      'ids' => array('inrxnid', 'message_id'),
+    ),
+    'unique keys' => array(
+      'message_id' => array('message_id'),
+    ),
+    'primary key' => array('inrxnid', 'message'),
+    'module' => 'blah',
+    'name' => 'inrxn_devlist',
+  );
+
+  $schema['devlist_refs'] = array(
+    'fields' => array(
+      'inrxnid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'ref_id' => array(
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+    ),
+    'indexes' => array(
+      'prsid_join' => array('prsid', 'nick'),
+    ),
+    'primary key' => array('ref_id'),
+    'module' => 'blah',
+    'name' => 'devlist_refs',
   );
 
   return $schema;
