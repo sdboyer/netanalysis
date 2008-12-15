@@ -22,15 +22,17 @@ class DbUpdater {
     $this->fields = $data->getNetworkData();
     $this->inrxnId = $data->getInrxnId();
     $this->update = (bool) db_select('inrxn')
-      ->fields('inrxnid')
+      // ->fields('inrxn', array('inrxnid'))
       ->condition('inrxnid', $this->inrxnId)
-      ->execute()->columnCount();
+      ->countQuery()->execute()->fetchField();
   }
 
   public function prepData() {
+    $this->prepIds();
     if ($this->update) {
-      $this->prepIds();
+
     }
+    $this->prepFields();
   }
 
   public function hitIt() {
@@ -38,17 +40,35 @@ class DbUpdater {
   }
 
   protected function prepIds() {
-    $this->getPerson($this->nd->getKnownIds());
-    if ($this->prsidState & self::PRSID_NEW) {
+    $known = $this->nd->getKnownIds();
+    $unknown = $this->nd->getUnknownIds();
+    // Merge the $known over the $unknown to ensure we take the ones we're more sure of
+    $all = array_merge($unknown, $known);
+    $this->prsidState |= $this->getPerson($known);
+    if ($this->prsidState & self::PRSID_NEW && !empty($unknown)) {
       // No matches found. Make sure we don't get any matches using unknowns, either.
-      $this->getPerson($this->nd->getUnknownIds(), self::BY_UNKNOWN);
+      $state = $this->getPerson($unknown, self::BY_UNKNOWN);
+      if ($state & self::PRSID_FOUND) {
+        // TODO this is nothing atm
+        $this->verifyMatch();
+      }
+      elseif ($state & self::PRSID_CONFLICT) {
+        // TODO this is nothing atm
+        $this->resolveConflict();
+      }
+      else {
+        $this->prsidState |= $state;
+        foreach ($all as $type => $id) {
+          $this->fields[$type] = $id;
+        }
+      }
     }
-
-    // We have a single match, so reverse tack and find all the alternate ids
-    // that are passed in which already exist in the db
+    // TODO Need to put in handling for conflicts
     if ($this->prsidState & self::PRSID_FOUND) {
+      // We have a single match, so reverse tack and find all the alternate ids
+      // that are passed in which already exist in the db
       $ids = self::getPersonAlternateIds($this->prsid);
-      foreach (array_merge($this->nd->getKnownIds(), $this->nd->getUnknownIds()) as $type => $id) {
+      foreach ($all as $type => $id) {
         $match = array_search($id, $ids);
         if (!empty($ids[$type])) {
           $match = array_search($id, $ids[$type]);
@@ -58,29 +78,45 @@ class DbUpdater {
         }
       }
     }
-    // TODO Need to put in handling for conflicts
+  }
+
+  protected function prepFields() {
+
+  }
+
+  protected function verifyMatch() {
+
+  }
+
+  protected function resolveConflict() {
+
   }
 
   protected function getPerson(Array $ids, $known = self::BY_KNOWN) {
     // TODO Consider making this a single large calculated query
     // TODO Also consider headdesking for an hour, EQUALLY A WASTE OF TIME
     foreach ($ids as $type => $id) {
-      $this->prsidMatches[] = Database::getActiveConnection()->select($this->personTable($type))
-        ->fields('prsid')
+      $this->prsidMatches[] = db_select(self::personTable($type))
+        ->fields('person', array('prsid'))
         ->condition($type, $id)
         ->execute()->fetchField();
     }
 
-    $this->prsidMatches = array_unique($this->prsidMatches);
+    $state = 0;
+    $this->prsidMatches = array_unique(array_filter($this->prsidMatches));
     switch (count($this->prsidMatches)) {
       case 0:
-        $this->prsidState |= (self::PRSID_NEW | $known);
+        $state |= (self::PRSID_NEW | $known);
+        break;
       case 1:
         $this->prsid = array_shift($this->prsidMatches);
-        $this->prsidState |= (self::PRSID_FOUND | $known);
+        $state |= (self::PRSID_FOUND | $known);
+        break;
       default:
-        $this->prsidState |= (self::PRSID_CONFLICT | $known);
+        $state |= (self::PRSID_CONFLICT | $known);
+        break;
     }
+    return $state;
   }
 
   public static function getPersonAlternateIds($prsid) {
@@ -118,7 +154,7 @@ class DbUpdater {
       ->execute();
   }*/
 
-  protected function personTable($field) {
+  public static function personTable($field) {
     switch ($field) {
       case 'nick':
         return 'nick_ids';
